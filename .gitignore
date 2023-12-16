@@ -168,3 +168,5 @@ codex_cache.json
 humaneval_tests*
 
 push.sh
+
+APPS.tar.gz

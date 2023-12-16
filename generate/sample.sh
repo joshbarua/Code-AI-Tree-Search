@@ -1,0 +1,1 @@
+python synthesis_exp.py -i 4136 --alg sample --num-samples 16 --prefix s-

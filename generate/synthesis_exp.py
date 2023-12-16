@@ -15,6 +15,7 @@ sys.path.append('../eval/')
 from default_pi import APPSHeuristic
 
 from transformer_utils.utils import get_model_by_name
+from transformers import LlamaForCausalLM, CodeLlamaTokenizer, BitsAndBytesConfig
 
 # okay with parallelization
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -58,12 +59,25 @@ def main():
     torch.cuda.manual_seed(args.seed)
 
     print(f"Loading model {args.load}")
-    model, tokenizer = get_model_by_name(args.load, args.device)
+    compute_dtype = getattr(torch, "bfloat16")
+    quant_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=compute_dtype,
+        bnb_4bit_use_double_quant=False,
+    )
+    tokenizer = CodeLlamaTokenizer.from_pretrained(args.load)
+    tokenizer.pad_token_id = 0
+    tokenizer.add_special_tokens({"eos_token":"</s>","bos_token":"<s>","unk_token":"<unk>"})
+    tokenizer.add_eos_token = False
+    model = LlamaForCausalLM.from_pretrained(args.load, quantization_config=quant_config, device_map="auto")
+    #model, tokenizer = get_model_by_name(args.load, args.device)
     print("Model loaded/initialized.")
 
     if args.load_value is not None:
         print(f"Loading value model {args.load_value}")
-        value_model = transformers.GPT2ForSequenceClassification.from_pretrained(args.load_value)
+        #value_model = transformers.GPT2ForSequenceClassification.from_pretrained(args.load_value)
+        value_model = LlamaForCausalLM.from_pretrained(args.load)
         print("Value model loaded.")
     else:
         value_model = None
@@ -171,9 +185,11 @@ def main():
         print('time elapsed', time_elapsed[-1] if isinstance(time_elapsed, list) else time_elapsed)
         print('sample times', info['sample_times'])
 
+        print(code_loc)
         with open(code_loc, "w") as f:
             json.dump({'codes': output_strs, 'rewards': test_rewards, 'train rewards': train_rewards,
                        'time': time_elapsed, 'sample times': info['sample_times']}, f)
+        5/0
 
 
 if __name__ == '__main__':
@@ -181,7 +197,8 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--arch", default="gpt2", choices=transformers.GPT2_PRETRAINED_MODEL_ARCHIVE_LIST)
-    parser.add_argument("-l", "--load", default="../models/1.5B", type=str)
+    #parser.add_argument("-l", "--load", default="../models/1.5B", type=str)
+    parser.add_argument("-l", "--load", default="codellama/CodeLlama-7b-Python-hf", type=str)
     parser.add_argument("--load-value", default=None, type=str, help="An optional value function for evaluating partial programs.")
     parser.add_argument("-t","--test-loc", default="../data_split/test.json", type=str, help="This file specifies the locations of the test set of the code dataset.")
     parser.add_argument("--width", default=3, type=int, help="The maximum number of children for any node.")

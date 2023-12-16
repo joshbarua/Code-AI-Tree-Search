@@ -13,9 +13,9 @@ scipy
 gym
 
 # Only needed for training
-# deepspeed
-# accelerate
-# tensorboardX
+deepspeed
+accelerate
+tensorboardX
 
 # for plotting trees and experiment figures
 networkx

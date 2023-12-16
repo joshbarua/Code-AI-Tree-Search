@@ -77,7 +77,7 @@ class APPSHeuristic(DefaultPolicyHeuristic):
             warnings.warn("Using a value function but not setting a shorter planning horizon (args.new_token_num)."
                           "Why using a value function?")
 
-        self.model.to(device)
+        #self.model.to(device)
         if self.use_value:
             self.value_model.to(device)
 

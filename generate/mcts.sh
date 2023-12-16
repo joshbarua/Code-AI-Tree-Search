@@ -1,0 +1,1 @@
+python synthesis_exp.py -i 4136 --alg mcts --rollout 16 --prefix t-
