@@ -45,7 +45,8 @@ class APPSHeuristic(DefaultPolicyHeuristic):
                  use_prompt_cache=False,
                  top_k_cache_steps=0,
                  ts_mode='best',
-                 debug=False):
+                 debug=False,
+                in_context_examples=False):
         super(APPSHeuristic, self).__init__(k=k, horizon=horizon, env=env)
 
         self.tokenizer = tokenizer
@@ -63,6 +64,7 @@ class APPSHeuristic(DefaultPolicyHeuristic):
         self.ts_mode = ts_mode
 
         self.debug = debug
+        self.in_context_examples = in_context_examples
 
         self.model = model
         self.value_model = value_model
@@ -128,7 +130,9 @@ class APPSHeuristic(DefaultPolicyHeuristic):
             start_time = time.time()
 
             sample_mode = (self.ts_mode == 'sample')
-            model_output = self.model.generate(
+            if self.in_context_examples: # stop token generation on "Problem"
+                print("TOKENIZER IDS", self.tokenizer.convert_ids_to_tokens([13756, 29933,  1307, 29924]))
+                model_output = self.model.generate(
                 input_ids,
                 top_k=self.k,
                 num_beams=(1 if sample_mode else self.num_beams), # if sampling enabled, beam should always be 1
@@ -139,8 +143,23 @@ class APPSHeuristic(DefaultPolicyHeuristic):
                 output_hidden_states=True,
                 output_scores=True,
                 max_length=horizon,
-                use_cache=True # huggingface default cache is always enabled
+                use_cache=True, # huggingface default cache is always enabled
+                eos_token_id=[13756, 29933,  1307, 29924]
             )
+            else:
+                model_output = self.model.generate(
+                    input_ids,
+                    top_k=self.k,
+                    num_beams=(1 if sample_mode else self.num_beams), # if sampling enabled, beam should always be 1
+                    num_return_sequences=self.num_beams,
+                    do_sample=sample_mode,
+                    early_stopping=True,
+                    return_dict_in_generate=True,
+                    output_hidden_states=True,
+                    output_scores=True,
+                    max_length=horizon,
+                    use_cache=True # huggingface default cache is always enabled
+                )
 
             if self.top_k_cache_steps > 0:
                 if hasattr(model_output, 'beam_indices'):

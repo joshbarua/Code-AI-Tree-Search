@@ -19,6 +19,7 @@ import numpy as np
 
 import networkx as nx
 import matplotlib.pyplot as plt
+import time
 
 from eval.utils import hierarchy_pos
 
@@ -72,6 +73,7 @@ def mcts_procedure(ag, tree_policy, env, done, root=None, rollout_weight=1., ter
     rollouts = np.clip(int(ag.rollouts * rollout_weight), 1, ag.rollouts)
 
     print("Performing rollouts.")
+    start_time = time.time()
     for _ in tqdm(range(rollouts)):
         if term_cond is not None and term_cond():
             break
@@ -130,7 +132,7 @@ def mcts_procedure(ag, tree_policy, env, done, root=None, rollout_weight=1., ter
                 else:
                     # follow the default policy to get a terminal state
                     state = ag.dp.get_predict_sequence(state)
-                    estimate = env.get_reward(state)
+                    estimate = env.get_reward(state, start_time=start_time)
 
                     # save this information for demo
                     node.info['complete_program'] = state

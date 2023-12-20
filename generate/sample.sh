@@ -1,1 +1,1 @@
-python synthesis_exp.py -i 4136 --alg sample --num-samples 16 --prefix s-
+python synthesis_exp.py -s 0 -e 5000 --alg sample --num-samples 16 --prefix s- -t ../data_split/train.json --in_context_examples --horizon 4096

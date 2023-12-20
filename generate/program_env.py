@@ -5,6 +5,8 @@ import warnings
 from abc import abstractmethod, ABC
 from collections import OrderedDict
 from types import SimpleNamespace
+import random
+import time
 
 from eval.compute_reward import compute_reward
 from eval.generate_gpt_codes import get_output_str_from_state_for_apps
@@ -30,6 +32,7 @@ class ProgramEnv(ABC):
         # state -> reward
         # we may need to retrieve the states (programs) in the order they were saved, so use OrderedDict
         self.cached_reward = OrderedDict()
+        self.cached_time = OrderedDict()
 
     def transition(self, s, a, is_model_dynamic=True):
         next_state = s + [a]
@@ -80,7 +83,7 @@ class APPSProgramEnv(ProgramEnv):
     """
     Code generation environment for APPS dataset.
     """
-    def __init__(self, prob_path, tokenizer, model_name, horizon, public_test_cases=None):
+    def __init__(self, prob_path, tokenizer, model_name, horizon, public_test_cases=None, in_context_problems=None):
         self.prob_path = prob_path
         self.tokenizer = tokenizer
         self.model = model_name
@@ -109,6 +112,23 @@ class APPSProgramEnv(ProgramEnv):
         state, _ = generate_apps_prompt(gpt_args, test_case_path, prompt_path, solutions_path, tokenizer, starter_path)
 
         self.init_prompt = copy.copy(state)
+        in_context_prompt = ""
+        if in_context_problems: # add in-context examples to prompt
+            gpt_args = SimpleNamespace(peeking=1, peek_frac=1) # want to peek at solutions
+            in_context_sample = random.sample(in_context_problems, 3)
+            for i,path in enumerate(in_context_sample):
+                test_case_path = os.path.join(path, "input_output.json")
+                prompt_path = os.path.join(path, "question.txt")
+                if os.path.exists(f"{path}/starter_code.py"):
+                    starter_path = os.path.join(path, "starter_code.py")
+                else:
+                    starter_path = None
+                solutions_path = os.path.join(path, "solutions.json")
+                example, _ = generate_apps_prompt(gpt_args, test_case_path, prompt_path, solutions_path, tokenizer, starter_path)
+                in_context_prompt += f"PROBLEM {i+1}:{example}\n"
+            state = f"{in_context_prompt}PROBLEM 4:{state}"
+            self.init_prompt = copy.copy(state)
+            
 
         self.state = self.tokenizer.encode(state)
         terminal_token = self.tokenizer.encode('<|endoftext|>')[0]
@@ -122,7 +142,7 @@ class APPSProgramEnv(ProgramEnv):
     def get_canonical_state(self):
         raise NotImplementedError()
 
-    def get_reward(self, s, mode='train'):
+    def get_reward(self, s, start_time=None, mode='train'):
         """
         Returns:
             The reward of program in s.
@@ -138,6 +158,11 @@ class APPSProgramEnv(ProgramEnv):
         reward = compute_reward(self.prob_path, output_str, mode=mode, public_test_cases=self.public_test_cases)
 
         if mode == 'train':
+            if start_time:
+                end_time = time.time()
+                elapsed_time = (end_time-start_time)
+                print("The time of execution of above program is :",elapsed_time, "s")
+                self.cached_time[tuple(s)] = elapsed_time
             self.cached_reward[tuple(s)] = reward
 
         return reward

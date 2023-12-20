@@ -1,1 +1,1 @@
-python synthesis_exp.py -i 4136 --alg mcts --rollout 16 --prefix t-
+python synthesis_exp.py -i 4136 --alg mcts --rollout 16 --prefix t- -t ../data_split/train.json --in_context_examples --horizon 4096

@@ -8,6 +8,7 @@ import torch
 import transformers
 import numpy as np
 from tqdm import tqdm
+import random
 
 sys.path.append('../')
 sys.path.append('../eval/')
@@ -69,7 +70,7 @@ def main():
     tokenizer = CodeLlamaTokenizer.from_pretrained(args.load)
     tokenizer.pad_token_id = 0
     tokenizer.add_special_tokens({"eos_token":"</s>","bos_token":"<s>","unk_token":"<unk>"})
-    tokenizer.add_eos_token = False
+    #tokenizer.add_eos_token = False
     model = LlamaForCausalLM.from_pretrained(args.load, quantization_config=quant_config, device_map="auto")
     #model, tokenizer = get_model_by_name(args.load, args.device)
     print("Model loaded/initialized.")
@@ -88,12 +89,46 @@ def main():
     # pre-processing dataset
     if args.dataset == 'apps':
         # get problem locations
-        with open(args.test_loc, "r") as f:
-            problems = json.load(f)
-        # get a list of program file paths
-        problems = [problems[idx] for idx in problem_indices]
+        if args.in_context_examples:
+            with open(f"../data_split/in_context_examples.json", 'r') as indices_file:
+                indices_dict = json.load(indices_file)
+            problems = indices_dict["train_subset_paths"]
+            problem_indices = [prob[prob.rfind('/')+1:]for prob in problems]
+            in_context_problems = indices_dict["in_context_paths"]
+        else:
+            with open(args.test_loc, "r") as f:
+                problems = json.load(f)
+            # get a list of program file paths
+            problems = [problems[idx] for idx in problem_indices]
+            in_context_problems = []
     else:
         raise Exception(f"Unknown dataset {args.dataset}")
+    
+    
+    # code to create in-context examples split and train subset
+    '''problem_difficulty_dict = {"introductory":set(), "interview":set(), "competition":set()}
+    for index in problems:
+        with open(f"{index}/metadata.json", 'r') as metadata_file:
+            difficulty = json.load(metadata_file)["difficulty"]
+            problem_difficulty_dict[difficulty].add(index)
+            
+    in_context_introductory_problems = random.sample(problem_difficulty_dict["introductory"], 100)
+    cleaned_in_context_introductory_problems = [path for path in in_context_introductory_problems if os.path.exists(f"{path}/input_output.json")][:17]
+    in_context_interview_problems = random.sample(problem_difficulty_dict["interview"], 100)
+    cleaned_in_context_interview_problems = [path for path in in_context_interview_problems if os.path.exists(f"{path}/input_output.json")][:17]
+    in_context_competition_problems = random.sample(problem_difficulty_dict["competition"], 100)
+    cleaned_in_context_competition_problems = [path for path in in_context_competition_problems if os.path.exists(f"{path}/input_output.json")][:16]
+    total_in_context_problems = cleaned_in_context_introductory_problems+cleaned_in_context_interview_problems+cleaned_in_context_competition_problems
+    introductory_problems = problem_difficulty_dict["introductory"] - set(cleaned_in_context_introductory_problems)
+    interview_problems = problem_difficulty_dict["interview"] - set(cleaned_in_context_interview_problems)
+    competition_problems = problem_difficulty_dict["competition"] - set(cleaned_in_context_competition_problems)
+    introductory_train_sample = random.sample(introductory_problems, 170)
+    interview_train_sample = random.sample(interview_problems, 170)
+    competition_train_sample = random.sample(competition_problems, 160)
+    train_subset = introductory_train_sample+interview_train_sample+competition_train_sample
+    split_dict = {"in_context_paths":total_in_context_problems, "train_subset_paths":train_subset}
+    with open("../data_split/in_context_examples.json", "w") as outfile: 
+        json.dump(split_dict, outfile)'''
 
     for i, prob_instance in zip(problem_indices, problems):
         code_loc = os.path.join(args.save, f"{args.prefix}{i}.json")
@@ -117,7 +152,8 @@ def main():
                 tokenizer=tokenizer,
                 model_name=args.load,
                 horizon=args.horizon,
-                public_test_cases=args.public_cases
+                public_test_cases=args.public_cases,
+                in_context_problems=in_context_problems
             )
         else:
             raise Exception(f"Unknown dataset {args.dataset}")
@@ -138,7 +174,8 @@ def main():
             top_k_cache_steps=args.top_k_cache_steps,
             ts_mode=args.ts_mode,
             env=env,
-            debug=args.debug
+            debug=args.debug,
+            in_context_examples=args.in_context_examples
         )
 
         start = time.time()
@@ -185,11 +222,9 @@ def main():
         print('time elapsed', time_elapsed[-1] if isinstance(time_elapsed, list) else time_elapsed)
         print('sample times', info['sample_times'])
 
-        print(code_loc)
         with open(code_loc, "w") as f:
             json.dump({'codes': output_strs, 'rewards': test_rewards, 'train rewards': train_rewards,
                        'time': time_elapsed, 'sample times': info['sample_times']}, f)
-        5/0
 
 
 if __name__ == '__main__':
@@ -245,6 +280,7 @@ if __name__ == '__main__':
     parser.add_argument("-s","--start", default=0, type=int)
     parser.add_argument("-e","--end", default=None, type=int)
     parser.add_argument("--indices", default=None, type=str)
+    parser.add_argument("--in_context_examples", action="store_true", default=False, help="Whether to use in-context examples when prompting")
 
     parser.add_argument("--save", type=str, default="./results", help="Directory to save generated code.")
     parser.add_argument("--prefix", type=str, default="", help="Prefix of generated code file.")
@@ -260,7 +296,7 @@ if __name__ == '__main__':
     # this can be 'desc' for parsing from problem description, 'half' for using half of input_output for public test cases,
     # or a number, that uses the first a few in input_output for public test cases
     parser.add_argument("--public-cases", type=str, default='half', help="Number of public test cases to use for evaluation.")
-    parser.add_argument('--overfit', action='store_true', default=False, help="Use the private test case as public tesst case for generation.")
+    parser.add_argument('--overfit', action='store_true', default=False, help="Use the private test case as public test case for generation.")
     parser.add_argument('--early-stop', action='store_true', default=False, help="Stop when a program with reward=1 is found.")
 
     args = parser.parse_args()
