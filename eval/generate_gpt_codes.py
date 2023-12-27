@@ -88,7 +88,7 @@ def generate_apps_prompt(args, test_case_path, prompt_path, solutions_path, toke
         rand_sol = tokenizer.encode(rand_sol, verbose=False)
         tokens_taken = int(args.peek_frac * len(rand_sol))
         rand_sol = rand_sol[:tokens_taken]
-        _input += tokenizer.decode(rand_sol)
+        _input += f"```{tokenizer.decode(rand_sol, skip_special_tokens=True)}```"
     else:
         sample_sol = None
 
@@ -98,7 +98,13 @@ def get_output_str_from_state_for_apps(s):
     """
     Get the code from the transformer output
     """
-    if "ANSWER:" in s:
-        s = s.split("ANSWER:\n")[1]
+    # shouldn't need as code is wrapped in code blocks
+    #if "ANSWER:" in s:
+    #    s = s.split("ANSWER:\n")[1]
+    try:
+        s = s.split('```')[1]
+    except:
+        s = ""
 
-    return s.replace("<|endoftext|>", "")
+    #return s.replace("<|endoftext|>", "")
+    return s.replace("</s>", "")

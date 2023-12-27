@@ -2,7 +2,7 @@ import json
 import os
 
 
-def get_test_cases(root, mode, public_test_cases, debug=False):
+def get_test_cases(root, mode, public_test_cases, overfit=False, debug=False):
     if public_test_cases == 'desc':
         # use test cases in problem description as public test cases
         if mode == 'train':
@@ -53,12 +53,13 @@ def get_test_cases(root, mode, public_test_cases, debug=False):
                             raise Exception(f"Can't understand public_test_cases {public_test_cases}")
                         private_test_cases = in_out_len - public_test_cases
 
-                        if public_test_cases < 1 or private_test_cases < 1:
+                        if (public_test_cases < 1 or private_test_cases < 1) and not overfit:
                             raise Exception(f"Not enough test cases: {public_test_cases}, {private_test_cases}.")
 
                         if mode == 'train':
-                            in_outs['inputs'] = in_outs['inputs'][:public_test_cases]
-                            in_outs['outputs'] = in_outs['outputs'][:public_test_cases]
+                            if not overfit:
+                                in_outs['inputs'] = in_outs['inputs'][:public_test_cases]
+                                in_outs['outputs'] = in_outs['outputs'][:public_test_cases]
                         elif mode == 'test':
                             in_outs['inputs'] = in_outs['inputs'][public_test_cases:]
                             in_outs['outputs'] = in_outs['outputs'][public_test_cases:]

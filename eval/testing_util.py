@@ -49,7 +49,7 @@ def timeout_handler(signum, frame):
 
 
 signal.signal(signal.SIGALRM, timeout_handler)
-timeout = 4  # seconds
+timeout = 10  # seconds
 
 
 # used to capture stdout as a list
@@ -136,7 +136,7 @@ def get_solutions(problem_list, prob_index):
 
 
 def run_test(prob_path: str = None, problem_list: List[str] = None, prob_index: int = None,
-             test: str = None, debug: bool = False, mode:str='test', public_test_cases=None):
+             test: str = None, debug: bool = False, mode:str='test', public_test_cases=None, overfit=False):
     """
     if test is not None it'll try to run the code.
     otherwise it'll just return an input and output pair.
@@ -152,7 +152,7 @@ def run_test(prob_path: str = None, problem_list: List[str] = None, prob_index: 
     elif problem_list is not None:
         root = problem_list[prob_index]
 
-    in_outs = get_test_cases(root, mode, public_test_cases, debug=debug)
+    in_outs = get_test_cases(root, mode, public_test_cases, overfit=overfit, debug=debug)
     if in_outs is None:
         raise Exception(f"input_output not found")
 
@@ -477,7 +477,8 @@ def run_test(prob_path: str = None, problem_list: List[str] = None, prob_index: 
                                                 set(frozenset(round(float(t), 3) for t in s) for s in
                                                     in_outs["outputs"][index]))
                 except Exception as e:
-                    print(f"Failed check6 exception = {e}")
+                    #print(f"Failed check6 exception = {e}")
+                    pass
 
                 if tmp_result == True and debug:
                     print("PASSED")

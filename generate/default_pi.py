@@ -130,36 +130,21 @@ class APPSHeuristic(DefaultPolicyHeuristic):
             start_time = time.time()
 
             sample_mode = (self.ts_mode == 'sample')
-            if self.in_context_examples: # stop token generation on "Problem"
-                print("TOKENIZER IDS", self.tokenizer.convert_ids_to_tokens([13756, 29933,  1307, 29924]))
-                model_output = self.model.generate(
-                input_ids,
-                top_k=self.k,
-                num_beams=(1 if sample_mode else self.num_beams), # if sampling enabled, beam should always be 1
-                num_return_sequences=self.num_beams,
-                do_sample=sample_mode,
-                early_stopping=True,
-                return_dict_in_generate=True,
-                output_hidden_states=True,
-                output_scores=True,
-                max_length=horizon,
-                use_cache=True, # huggingface default cache is always enabled
-                eos_token_id=[13756, 29933,  1307, 29924]
-            )
-            else:
-                model_output = self.model.generate(
-                    input_ids,
-                    top_k=self.k,
-                    num_beams=(1 if sample_mode else self.num_beams), # if sampling enabled, beam should always be 1
-                    num_return_sequences=self.num_beams,
-                    do_sample=sample_mode,
-                    early_stopping=True,
-                    return_dict_in_generate=True,
-                    output_hidden_states=True,
-                    output_scores=True,
-                    max_length=horizon,
-                    use_cache=True # huggingface default cache is always enabled
-                )
+            model_output = self.model.generate(
+            input_ids,
+            top_k=(0 if sample_mode else self.k),
+            temperature =(.6 if sample_mode else 0),
+            top_p=(.95 if sample_mode else 0),
+            num_beams=(1 if sample_mode else self.num_beams), # if sampling enabled, beam should always be 1
+            num_return_sequences=self.num_beams,
+            do_sample=sample_mode,
+            early_stopping=True,
+            return_dict_in_generate=True,
+            output_hidden_states=True,
+            output_scores=True,
+            max_length=horizon,
+            use_cache=True # huggingface default cache is always enabled
+        )
 
             if self.top_k_cache_steps > 0:
                 if hasattr(model_output, 'beam_indices'):
@@ -185,6 +170,8 @@ class APPSHeuristic(DefaultPolicyHeuristic):
 
             self.sample_times += 1
             self.time_stamps.append(time.time())
+            #print(output_ids)
+            #print(self.tokenizer.convert_ids_to_tokens(output_ids))
 
             if self.debug:
                 print('==== generated program ====')

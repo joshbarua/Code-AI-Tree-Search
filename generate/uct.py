@@ -65,7 +65,7 @@ def uct_exp(args, env, dp, log_loc, start):
     time_stamps = dp.time_stamps
     times = [t - start for t in time_stamps]
 
-    return states, {'sample_times': dp.sample_times, 'times': times}
+    return states, {'num_samples': dp.sample_times, 'times': times}
 
 
 def uct_multistep_exp(args, env, dp, log_loc, start):

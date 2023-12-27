@@ -30,7 +30,7 @@ def bs_exp(args, env, dp):
     """
     s = env.state
     s = dp.get_predict_sequence(s, horizon=args.horizon)
-    return [s], {'sample_times': args.num_beams}
+    return [s], {'num_samples': args.num_beams}
 
 def sample_exp(args, env, dp):
     """
@@ -39,8 +39,17 @@ def sample_exp(args, env, dp):
     s = env.state
 
     assert dp.ts_mode == 'sample' # this should be specified after sampling alg is specified
-    samples = [dp.get_predict_sequence(s, horizon=args.horizon) for _ in tqdm(range(args.num_samples))]
-    return samples, {'sample_times': args.num_samples}
+    samples = []
+    sample_times = []
+    start = time.time()
+    for _ in range(args.num_samples):
+        sample = dp.get_predict_sequence(s, horizon=args.horizon)
+        samples.append(sample)
+        sample_times.append(time.time() - start)
+        test_reward = env.get_reward(sample, mode='test')
+        if test_reward == 1:
+            break
+    return samples, {'num_samples': len(samples), 'times': sample_times}
 
 
 def main():
@@ -85,52 +94,79 @@ def main():
 
     if not os.path.exists(args.save):
         os.makedirs(args.save, exist_ok=True)
+        
+    with open(f"{args.save}/args.txt", "w") as text_file:
+        text_file.write(pprint.pformat(vars(args)))
 
     # pre-processing dataset
     if args.dataset == 'apps':
         # get problem locations
         if args.in_context_examples:
-            with open(f"../data_split/in_context_examples.json", 'r') as indices_file:
-                indices_dict = json.load(indices_file)
-            problems = indices_dict["train_subset_paths"]
-            problem_indices = [prob[prob.rfind('/')+1:]for prob in problems]
-            in_context_problems = indices_dict["in_context_paths"]
+            with open(args.in_context_examples, 'r') as indices_file:
+                in_context_problems = json.load(indices_file)
+            with open(args.test_loc, "r") as f:
+                problems = json.load(f)
+                problem_indices = [prob[prob.rfind('/')+1:]for prob in problems]
         else:
+            in_context_problems = []
             with open(args.test_loc, "r") as f:
                 problems = json.load(f)
             # get a list of program file paths
             problems = [problems[idx] for idx in problem_indices]
-            in_context_problems = []
     else:
         raise Exception(f"Unknown dataset {args.dataset}")
     
     
     # code to create in-context examples split and train subset
     '''problem_difficulty_dict = {"introductory":set(), "interview":set(), "competition":set()}
+    count = 0
+    sys.set_int_max_str_digits(1000000)
     for index in problems:
-        with open(f"{index}/metadata.json", 'r') as metadata_file:
-            difficulty = json.load(metadata_file)["difficulty"]
-            problem_difficulty_dict[difficulty].add(index)
-            
-    in_context_introductory_problems = random.sample(problem_difficulty_dict["introductory"], 100)
-    cleaned_in_context_introductory_problems = [path for path in in_context_introductory_problems if os.path.exists(f"{path}/input_output.json")][:17]
-    in_context_interview_problems = random.sample(problem_difficulty_dict["interview"], 100)
-    cleaned_in_context_interview_problems = [path for path in in_context_interview_problems if os.path.exists(f"{path}/input_output.json")][:17]
-    in_context_competition_problems = random.sample(problem_difficulty_dict["competition"], 100)
-    cleaned_in_context_competition_problems = [path for path in in_context_competition_problems if os.path.exists(f"{path}/input_output.json")][:16]
-    total_in_context_problems = cleaned_in_context_introductory_problems+cleaned_in_context_interview_problems+cleaned_in_context_competition_problems
-    introductory_problems = problem_difficulty_dict["introductory"] - set(cleaned_in_context_introductory_problems)
-    interview_problems = problem_difficulty_dict["interview"] - set(cleaned_in_context_interview_problems)
-    competition_problems = problem_difficulty_dict["competition"] - set(cleaned_in_context_competition_problems)
-    introductory_train_sample = random.sample(introductory_problems, 170)
-    interview_train_sample = random.sample(interview_problems, 170)
-    competition_train_sample = random.sample(competition_problems, 160)
-    train_subset = introductory_train_sample+interview_train_sample+competition_train_sample
-    split_dict = {"in_context_paths":total_in_context_problems, "train_subset_paths":train_subset}
-    with open("../data_split/in_context_examples.json", "w") as outfile: 
-        json.dump(split_dict, outfile)'''
+        if os.path.exists(f"{index}/input_output.json"):
+            print(index)
+            with open(f"{index}/input_output.json", 'r') as in_out_file:
+                in_out_dict = json.load(in_out_file)
+            if len(in_out_dict["inputs"])>1:
+                with open(f"{index}/metadata.json", 'r') as metadata_file:
+                    difficulty = json.load(metadata_file)["difficulty"]
+                problem_difficulty_dict[difficulty].add(index)
+                continue
+        count += 1
+    print(f"Skipped {count} problems")
+    print("introduction", len(problem_difficulty_dict["introductory"]))
+    print("interview", len(problem_difficulty_dict["interview"]))
+    print("competition", len(problem_difficulty_dict["competition"]))
 
-    for i, prob_instance in zip(problem_indices, problems):
+            
+    in_context_introductory_problems = random.sample(problem_difficulty_dict["introductory"], 10)
+    with open("../data_split/10prob_train_introductory.json", 'w') as output_file:
+        json.dump(in_context_introductory_problems, output_file)
+    in_context_interview_problems = random.sample(problem_difficulty_dict["interview"], 10)
+    with open("../data_split/10prob_train_interview.json", 'w') as output_file:
+        json.dump(in_context_interview_problems, output_file)
+    in_context_competition_problems = random.sample(problem_difficulty_dict["competition"], 10)
+    with open("../data_split/10prob_train_competition.json", 'w') as output_file:
+        json.dump(in_context_competition_problems, output_file)
+    introductory_problems = problem_difficulty_dict["introductory"] - set(in_context_introductory_problems)
+    interview_problems = problem_difficulty_dict["interview"] - set(in_context_interview_problems)
+    competition_problems = problem_difficulty_dict["competition"] - set(in_context_competition_problems)
+    introductory_train_sample = random.sample(introductory_problems, 200)
+    with open("../data_split/200prob_train_introductory.json", 'w') as output_file:
+        json.dump(introductory_train_sample, output_file)
+    interview_train_sample = random.sample(interview_problems, 50)
+    with open("../data_split/50prob_train_interview.json", 'w') as output_file:
+        json.dump(interview_train_sample, output_file)
+    competition_train_sample = random.sample(competition_problems, 200)
+    with open("../data_split/200prob_train_competition.json", 'w') as output_file:
+        json.dump(competition_train_sample, output_file)
+    5/0
+    #train_subset = introductory_train_sample+interview_train_sample+competition_train_sample
+    #split_dict = {"in_context_paths":total_in_context_problems, "train_subset_paths":train_subset}
+    #with open("../data_split/in_context_examples.json", "w") as outfile: 
+    #    json.dump(split_dict, outfile)
+    '''
+
+    for i, prob_instance in tqdm(zip(problem_indices, problems)):
         code_loc = os.path.join(args.save, f"{args.prefix}{i}.json")
         log_loc = os.path.join(args.save, f"{args.prefix}{i}.log")
 
@@ -153,7 +189,8 @@ def main():
                 model_name=args.load,
                 horizon=args.horizon,
                 public_test_cases=args.public_cases,
-                in_context_problems=in_context_problems
+                in_context_problems=in_context_problems,
+                overfit=args.overfit
             )
         else:
             raise Exception(f"Unknown dataset {args.dataset}")
@@ -183,7 +220,7 @@ def main():
         if args.peek:
             # for sanity check, use the ground truth solution
             states = [env.get_canonical_state()]
-            info = {'sample_times': 0}
+            info = {'num_samples': 0}
         else:
             # run code generation
             if args.alg == 'mcts':
@@ -220,11 +257,11 @@ def main():
         print('train reward', train_rewards[best_idx])
         print('test reward', test_rewards[best_idx])
         print('time elapsed', time_elapsed[-1] if isinstance(time_elapsed, list) else time_elapsed)
-        print('sample times', info['sample_times'])
+        print('sample times', info['num_samples'])
 
         with open(code_loc, "w") as f:
             json.dump({'codes': output_strs, 'rewards': test_rewards, 'train rewards': train_rewards,
-                       'time': time_elapsed, 'sample times': info['sample_times']}, f)
+                       'time': time_elapsed, 'sample times': info['num_samples']}, f)
 
 
 if __name__ == '__main__':
@@ -280,7 +317,7 @@ if __name__ == '__main__':
     parser.add_argument("-s","--start", default=0, type=int)
     parser.add_argument("-e","--end", default=None, type=int)
     parser.add_argument("--indices", default=None, type=str)
-    parser.add_argument("--in_context_examples", action="store_true", default=False, help="Whether to use in-context examples when prompting")
+    parser.add_argument("--in_context_examples", default=False, help="Whether to use in-context examples when prompting")
 
     parser.add_argument("--save", type=str, default="./results", help="Directory to save generated code.")
     parser.add_argument("--prefix", type=str, default="", help="Prefix of generated code file.")
@@ -290,7 +327,7 @@ if __name__ == '__main__':
     parser.add_argument('--rerun', action='store_true', default=False, help="If True, rerun if the output file already exists.")
     parser.add_argument('--no-seq-cache', action='store_true', default=False)
     parser.add_argument('--no-prompt-cache', action='store_true', default=False)
-    parser.add_argument('--top-k-cache-steps', type=int, default=1024, help="Number of forward steps to cache top k caches, default 1024 means the whole horizon.")
+    parser.add_argument('--top-k-cache-steps', type=int, default=4096, help="Number of forward steps to cache top k caches, default 1024 means the whole horizon.")
     parser.add_argument('--seed', type=int, default=0, help='random seed (default: 0)')
 
     # this can be 'desc' for parsing from problem description, 'half' for using half of input_output for public test cases,

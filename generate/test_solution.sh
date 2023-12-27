@@ -1,0 +1,1 @@
+python test_solution.py -s 0 -e 5000 --test-loc ../data_split/test_introductory.json --root ./results --save ./results/ --prefix s- -n 5 

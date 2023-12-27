@@ -1,1 +1,1 @@
-python synthesis_exp.py -s 0 -e 5000 --alg sample --num-samples 16 --prefix s- -t ../data_split/train.json --in_context_examples --horizon 4096
+python synthesis_exp.py -s 0 -e 5000 --alg sample --num-samples 5 --prefix s- --test-loc ../data_split/test_introductory.json --horizon 4096 --in_context_examples ../data_split/train_introductory.json --save ./results --max-sample-times 4096 

@@ -7,16 +7,16 @@ import numpy as np
 Running set in a separate process
 https://github.com/hendrycks/apps/blob/83d925041b1c43c32b56d444bb315f729f4ff633/eval/test_one_solution.py#L57
 """
-def _temp_run(prob_path, output_str, mode, public_test_cases, result):
-    result.append(test_util.run_test(prob_path=prob_path, test=output_str, mode=mode, public_test_cases=public_test_cases))
+def _temp_run(prob_path, output_str, mode, public_test_cases, result, overfit=False):
+    result.append(test_util.run_test(prob_path=prob_path, test=output_str, mode=mode, public_test_cases=public_test_cases, overfit=overfit))
 
-def check_correctness(prob_path, output_str, mode, public_test_cases):
+def check_correctness(prob_path, output_str, mode, public_test_cases, overfit=False):
     """Check correctness of code generation with a global timeout.
     The global timeout is to catch some extreme/rare cases not handled by the timeouts
     inside `run_test`"""
     manager = multiprocessing.Manager()
     result = manager.list()
-    p = multiprocessing.Process(target=_temp_run, args=(prob_path, output_str, mode, public_test_cases, result))
+    p = multiprocessing.Process(target=_temp_run, args=(prob_path, output_str, mode, public_test_cases, result, overfit))
     p.start()
     p.join(timeout=10)
     if p.is_alive():
@@ -29,14 +29,14 @@ def check_correctness(prob_path, output_str, mode, public_test_cases):
     return result[0]
 
 
-def compute_reward(prob_path, output_str, mode='train', public_test_cases=None, return_info=False):
+def compute_reward(prob_path, output_str, mode='train', public_test_cases=None, overfit=False, return_info=False):
     """
     A utility function that computes the reward given problem path and output string of our model
     It is rewarded by the number of tests passed. When passing the same number of tests.
     """
     # from https://github.com/hendrycks/apps/blob/83d925041b1c43c32b56d444bb315f729f4ff633/eval/test_one_solution.py#L141
     try:
-        curr_res = check_correctness(prob_path, output_str, mode, public_test_cases)
+        curr_res = check_correctness(prob_path, output_str, mode, public_test_cases, overfit)
         fixed = []
         for e in curr_res:
             if isinstance(e, np.ndarray):

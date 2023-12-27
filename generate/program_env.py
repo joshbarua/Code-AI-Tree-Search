@@ -83,11 +83,13 @@ class APPSProgramEnv(ProgramEnv):
     """
     Code generation environment for APPS dataset.
     """
-    def __init__(self, prob_path, tokenizer, model_name, horizon, public_test_cases=None, in_context_problems=None):
+    def __init__(self, prob_path, tokenizer, model_name, horizon, public_test_cases=None, in_context_problems=None, overfit=False):
         self.prob_path = prob_path
         self.tokenizer = tokenizer
         self.model = model_name
         self.public_test_cases = public_test_cases
+        self.in_context_problems = in_context_problems
+        self.overfit = overfit
 
         # code from generate_gpt_codes that generate paths for all essential files
         public_test_case_path = os.path.join(prob_path, "public_input_output.json")
@@ -112,10 +114,10 @@ class APPSProgramEnv(ProgramEnv):
         state, _ = generate_apps_prompt(gpt_args, test_case_path, prompt_path, solutions_path, tokenizer, starter_path)
 
         self.init_prompt = copy.copy(state)
-        in_context_prompt = ""
-        if in_context_problems: # add in-context examples to prompt
+        if self.in_context_problems: # add in-context examples to prompt
             gpt_args = SimpleNamespace(peeking=1, peek_frac=1) # want to peek at solutions
-            in_context_sample = random.sample(in_context_problems, 3)
+            in_context_sample = random.sample(self.in_context_problems, 2)
+            in_context_prompt = f"You are an expert python programmer tasked with solving {len(in_context_sample)+1} problems. Wrap your solutions inside a code block.\n"
             for i,path in enumerate(in_context_sample):
                 test_case_path = os.path.join(path, "input_output.json")
                 prompt_path = os.path.join(path, "question.txt")
@@ -125,18 +127,22 @@ class APPSProgramEnv(ProgramEnv):
                     starter_path = None
                 solutions_path = os.path.join(path, "solutions.json")
                 example, _ = generate_apps_prompt(gpt_args, test_case_path, prompt_path, solutions_path, tokenizer, starter_path)
-                in_context_prompt += f"PROBLEM {i+1}:{example}\n"
-            state = f"{in_context_prompt}PROBLEM 4:{state}"
+                in_context_prompt += f"PROBLEM {i+1}: Write a python code to solve the following coding problem that obeys the constraints and passes the example test cases. Please wrap your code answer using ```:{example}\n"
+            state = f"{in_context_prompt}PROBLEM {len(in_context_sample)+1}:{state}"
             self.init_prompt = copy.copy(state)
-            
 
         self.state = self.tokenizer.encode(state)
-        terminal_token = self.tokenizer.encode('<|endoftext|>')[0]
+        #terminal_token = self.tokenizer.encode('<|endoftext|>')[0]
+        terminal_token = self.tokenizer.encode('</s>')[0]
 
         super(APPSProgramEnv, self).__init__(terminal_token=terminal_token, horizon=horizon)
 
     def convert_state_to_program(self, s):
-        s = self.tokenizer.decode(s)
+        s = self.tokenizer.decode(s, skip_special_tokens=True)
+        if self.in_context_problems:
+            s = s[len(self.init_prompt):]
+            if "PROBLEM" in s:
+                s = s[:s.find("PROBLEM")]
         return get_output_str_from_state_for_apps(s)
 
     def get_canonical_state(self):
@@ -155,7 +161,7 @@ class APPSProgramEnv(ProgramEnv):
             return self.cached_reward[tuple(s)]
 
         output_str = self.convert_state_to_program(s)
-        reward = compute_reward(self.prob_path, output_str, mode=mode, public_test_cases=self.public_test_cases)
+        reward = compute_reward(self.prob_path, output_str, mode=mode, public_test_cases=self.public_test_cases, overfit=self.overfit)
 
         if mode == 'train':
             if start_time:

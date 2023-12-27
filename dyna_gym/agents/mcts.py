@@ -54,7 +54,7 @@ def mcts_tree_policy(ag, children):
 def mcts_procedure(ag, tree_policy, env, done, root=None, rollout_weight=1., term_cond=None, ts_mode="best"):
     """
     Compute the entire MCTS procedure wrt to the selected tree policy.
-    Funciton tree_policy is a function taking an agent + a list of ChanceNodes as argument
+    Function tree_policy is a function taking an agent + a list of ChanceNodes as argument
     and returning the one chosen by the tree policy.
     """
     decision_node_num = 0
@@ -74,7 +74,8 @@ def mcts_procedure(ag, tree_policy, env, done, root=None, rollout_weight=1., ter
 
     print("Performing rollouts.")
     start_time = time.time()
-    for _ in tqdm(range(rollouts)):
+    for i in tqdm(range(rollouts)):
+        print(f"Rollout {i}")
         if term_cond is not None and term_cond():
             break
         rewards = [] # Rewards collected along the tree for the current rollout
@@ -131,7 +132,9 @@ def mcts_procedure(ag, tree_policy, env, done, root=None, rollout_weight=1., ter
                     estimate = ag.dp.get_value(state)
                 else:
                     # follow the default policy to get a terminal state
+                    print("BEFORE", ag.dp.tokenizer.decode(state, skip_special_tokens=True))
                     state = ag.dp.get_predict_sequence(state)
+                    print("AFTER", ag.dp.tokenizer.decode(state, skip_special_tokens=True))
                     estimate = env.get_reward(state, start_time=start_time)
 
                     # save this information for demo
@@ -154,6 +157,7 @@ def mcts_procedure(ag, tree_policy, env, done, root=None, rollout_weight=1., ter
         # should finish backpropagating all the rewards back
         assert len(rewards) == 0
 
+    print(root.children)
     return max(root.children, key=lambda n: chance_node_value(n, mode=ts_mode)).action, root
 
 class DecisionNode:
