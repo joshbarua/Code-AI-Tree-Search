@@ -75,7 +75,6 @@ def mcts_procedure(ag, tree_policy, env, done, root=None, rollout_weight=1., ter
     print("Performing rollouts.")
     start_time = time.time()
     for i in tqdm(range(rollouts)):
-        print(f"Rollout {i}")
         if term_cond is not None and term_cond():
             break
         rewards = [] # Rewards collected along the tree for the current rollout
@@ -92,6 +91,7 @@ def mcts_procedure(ag, tree_policy, env, done, root=None, rollout_weight=1., ter
                     node = tree_policy(ag, node.children) # Shun: move down the tree, node is now a ChanceNode
             else: # ChanceNode
                 state_p, reward, terminal = env.transition(node.parent.state, node.action, ag.is_model_dynamic)
+                # print('state_p', env.tokenizer.decode(state_p))
                 rewards.append(reward)
 
                 new_state = True
@@ -111,6 +111,7 @@ def mcts_procedure(ag, tree_policy, env, done, root=None, rollout_weight=1., ter
             node.children.append(DecisionNode(node, state_p, ag.action_space.copy(), terminal, dp=ag.dp, id=decision_node_num))
             decision_node_num += 1
             node = node.children[-1]
+        #print('curr state', env.tokenizer.decode(node.state).split('```')[-1])
 
         # Evaluation
         # now `rewards` collected all rewards in the ChanceNodes above this node
@@ -132,9 +133,7 @@ def mcts_procedure(ag, tree_policy, env, done, root=None, rollout_weight=1., ter
                     estimate = ag.dp.get_value(state)
                 else:
                     # follow the default policy to get a terminal state
-                    print("BEFORE", ag.dp.tokenizer.decode(state, skip_special_tokens=True))
                     state = ag.dp.get_predict_sequence(state)
-                    print("AFTER", ag.dp.tokenizer.decode(state, skip_special_tokens=True))
                     estimate = env.get_reward(state, start_time=start_time)
 
                     # save this information for demo
@@ -157,7 +156,6 @@ def mcts_procedure(ag, tree_policy, env, done, root=None, rollout_weight=1., ter
         # should finish backpropagating all the rewards back
         assert len(rewards) == 0
 
-    print(root.children)
     return max(root.children, key=lambda n: chance_node_value(n, mode=ts_mode)).action, root
 
 class DecisionNode:

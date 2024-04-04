@@ -10,6 +10,9 @@ import sys
 import io
 import faulthandler
 import platform
+import linecache
+import importlib
+import tempfile
 
 # used for debugging to time steps
 from datetime import datetime
@@ -31,6 +34,56 @@ from enum import Enum
 
 from test_case_split import get_test_cases
 
+def import_module_from_path(path):
+    # Extract the directory and module name from the path
+    module_dir, module_file = os.path.split(path)
+    module_name, _ = os.path.splitext(module_file)
+
+    # Add the module directory to sys.path
+    sys.path.append(module_dir)
+
+    # Import the module using importlib
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+def set_trace_to_file(filename, function, code_path, *args, **kwargs):
+    preamble_num_lines = 16
+    with open(filename, "w") as file:
+        def trace_function(frame, event, arg):
+            if event in ["line"]: # , "call", "return"]:
+                # Retrieve the filename and line number
+                fn = os.path.abspath(frame.f_code.co_filename)
+                if fn.strip() == code_path.strip(): # and frame.f_lineno >= preamble_num_lines:
+                    lineno = frame.f_lineno # - preamble_num_lines # preceding import statements
+                    # print(fn, lineno)
+
+                    # Retrieve the specific line of code
+                    line = linecache.getline(fn, lineno).rstrip()
+
+                    # Retrieve the local variables at this point in the code
+                    local_variables = frame.f_locals
+                    trace_info = f"Event: {event} | Line {lineno-preamble_num_lines}: {line} | Local variables: {local_variables}\n"
+                    
+                    # Write the trace info to the file
+                    try:
+                        file.write(trace_info)
+                    except:
+                        pass
+
+            return trace_function
+
+        # Set the trace with a file-bound trace function
+        sys.settrace(trace_function)
+
+        # Call the function to be traced
+        return_val = function(*args, **kwargs)
+        file.write(str(return_val)+'\n')
+
+        # Clear the trace
+        sys.settrace(None)
+        return return_val
 
 class CODE_TYPE(Enum):
     call_based = 0
@@ -136,7 +189,8 @@ def get_solutions(problem_list, prob_index):
 
 
 def run_test(prob_path: str = None, problem_list: List[str] = None, prob_index: int = None,
-             test: str = None, debug: bool = False, mode:str='test', public_test_cases=None, overfit=False):
+             test: str = None, debug: bool = False, mode:str='test', public_test_cases=None, overfit=False,
+             trace_path: str = None):
     """
     if test is not None it'll try to run the code.
     otherwise it'll just return an input and output pair.
@@ -191,6 +245,9 @@ def run_test(prob_path: str = None, problem_list: List[str] = None, prob_index: 
             except Exception as e:
                 signal.alarm(0)
                 print(f"type 0 compilation error = {e}")
+                if trace_path is not None:
+                    with open(os.path.join(trace_path, 'compile.txt'), 'w') as fout:
+                        fout.write(str(e)+'\n')
                 results.append(-2)
                 return results
             signal.alarm(0)
@@ -276,7 +333,15 @@ def run_test(prob_path: str = None, problem_list: List[str] = None, prob_index: 
                 try:
                     # print("------------")
                     # print(inputs)
-                    output = method(*inputs)
+                    if trace_path is not None:
+                        temp_file = tempfile.NamedTemporaryFile(dir='/tmp', suffix='.py', delete=False)
+                        temp_file.write(sol.encode('utf-8'))
+                        temp_file.close()
+                        temp_module = import_module_from_path(temp_file.name)
+                        output = set_trace_to_file(os.path.join(trace_path, 'input'+str(index)+'.txt'), getattr(temp_module, method_name), temp_file.name, *inputs)
+                        os.system('rm -rf \"'+temp_file.name+'\"')
+                    else:
+                        output = method(*inputs)
 
                     # ground truth sequences are not tuples
                     if isinstance(output, tuple):
@@ -300,6 +365,9 @@ def run_test(prob_path: str = None, problem_list: List[str] = None, prob_index: 
                     signal.alarm(0)
                     faulthandler.disable()
                     print(f"Standard input runtime error or time limit exceeded error = {e}")
+                    if trace_path is not None:
+                        with open(os.path.join(trace_path, 'error'+str(index)+'.txt'), 'w') as fout:
+                            fout.write(f"Standard input runtime error or time limit exceeded error = {e}\n")
                     results.append(-1)
                     continue
                 faulthandler.disable()
@@ -320,6 +388,7 @@ def run_test(prob_path: str = None, problem_list: List[str] = None, prob_index: 
                 with Capturing() as output:
                     try:
                         call_method(method, inputs)
+                        # set_trace_to_file('trace_output.txt', call_method, method, inputs)
                         # reset the alarm
                         signal.alarm(0)
                         passed = True
@@ -536,6 +605,7 @@ def call_method(method, inputs):
     def _inner_call_method(_method):
         try:
             return _method()
+            # return set_trace_to_file('trace_output.txt', _method)
         except SystemExit as e:
             pass
         finally:

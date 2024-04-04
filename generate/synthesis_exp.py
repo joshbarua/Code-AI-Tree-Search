@@ -3,6 +3,9 @@ import os
 import pprint
 import sys
 import time
+import traceback
+import csv
+from collections import defaultdict
 
 import torch
 import transformers
@@ -17,6 +20,9 @@ from default_pi import APPSHeuristic
 
 from transformer_utils.utils import get_model_by_name
 from transformers import LlamaForCausalLM, CodeLlamaTokenizer, BitsAndBytesConfig
+import vllm
+from pcw.modeling_llama_with_pcw import LlamaForCausalLMPCW
+from pcw.model_loaders import load_pcw_wrapper
 
 # okay with parallelization
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -29,8 +35,8 @@ def bs_exp(args, env, dp):
     Run beam search
     """
     s = env.state
-    s = dp.get_predict_sequence(s, horizon=args.horizon)
-    return [s], {'num_samples': args.num_beams}
+    s = dp.get_predict_sequence(s, horizon=args.horizon, return_all=True)
+    return s, {'num_samples': args.num_beams}
 
 def sample_exp(args, env, dp):
     """
@@ -42,13 +48,16 @@ def sample_exp(args, env, dp):
     samples = []
     sample_times = []
     start = time.time()
-    for _ in range(args.num_samples):
+    """for _ in range(args.num_samples):
         sample = dp.get_predict_sequence(s, horizon=args.horizon)
         samples.append(sample)
         sample_times.append(time.time() - start)
         test_reward = env.get_reward(sample, mode='test')
         if test_reward == 1:
-            break
+            break"""
+    samples = dp.get_predict_sequence(s, horizon=args.horizon, return_all=True)
+    end = time.time()
+    sample_times = [end-start for _ in samples]
     return samples, {'num_samples': len(samples), 'times': sample_times}
 
 
@@ -80,9 +89,21 @@ def main():
     tokenizer.pad_token_id = 0
     tokenizer.add_special_tokens({"eos_token":"</s>","bos_token":"<s>","unk_token":"<unk>"})
     #tokenizer.add_eos_token = False
-    model = LlamaForCausalLM.from_pretrained(args.load, quantization_config=quant_config, device_map="auto")
-    #model, tokenizer = get_model_by_name(args.load, args.device)
+    if args.parallel_context_window:
+        model = load_pcw_wrapper(args.load, n_windows=args.num_samples)
+        # model = LlamaForCausalLMPCW.from_pretrained(args.load, device_map="auto")
+    else:
+        kwargs = {
+            "model": args.load,
+            "dtype": "float16"
+        }
+        if os.path.exists(os.path.join(args.load, "quant_config.json")):
+            kwargs["quantization"] = "AWQ"
+        if len(os.environ['CUDA_VISIBLE_DEVICES'].split(',')) > 1:
+            kwargs["tensor_parallel_size"] = len(os.environ['CUDA_VISIBLE_DEVICES'].split(','))
+        model = vllm.LLM(**kwargs, download_dir='/home/sanjayss/.cache/huggingface/hub/')
     print("Model loaded/initialized.")
+    #model, tokenizer = get_model_by_name(args.load, args.device)
 
     if args.load_value is not None:
         print(f"Loading value model {args.load_value}")
@@ -106,13 +127,15 @@ def main():
                 in_context_problems = json.load(indices_file)
             with open(args.test_loc, "r") as f:
                 problems = json.load(f)
-                problem_indices = [prob[prob.rfind('/')+1:]for prob in problems]
+                # problem_indices = [prob[prob.rfind('/')+1:] for prob in problems]
         else:
             in_context_problems = []
             with open(args.test_loc, "r") as f:
                 problems = json.load(f)
-            # get a list of program file paths
-            problems = [problems[idx] for idx in problem_indices]
+        # get a list of program file paths
+        print(problem_indices, len(problem_indices), args.start, args.end)
+        problem_indices = [i for i in problem_indices if i >= 0 and i < len(problems)]
+        problems = [problems[idx] for idx in problem_indices]
     else:
         raise Exception(f"Unknown dataset {args.dataset}")
     
@@ -166,9 +189,27 @@ def main():
     #    json.dump(split_dict, outfile)
     '''
 
+    extra_examples = []
+    if args.extra_examples_csv_path is not None:
+        with open(args.extra_examples_csv_path) as f:
+            reader = csv.DictReader(f)
+            items = list(reader)
+        extra_example_dict = defaultdict(list)
+        extra_example_prompts = {}
+        for item in items:
+            extra_example_dict[item['images']].append(item['programs'])
+            extra_example_prompts[item['images']] = item['prompts'][item['prompts'].index('\nQUESTION:'):]
+        for key in extra_example_dict:
+            extra_examples.append((extra_example_prompts[key], extra_example_dict[key]))
+    programs_to_repair = {}
+    if args.programs_to_repair is not None:
+        with open(args.programs_to_repair) as f:
+            programs_to_repair = json.load(f)
     for i, prob_instance in tqdm(zip(problem_indices, problems)):
         code_loc = os.path.join(args.save, f"{args.prefix}{i}.json")
         log_loc = os.path.join(args.save, f"{args.prefix}{i}.log")
+        if len(programs_to_repair) > 0 and prob_instance not in programs_to_repair:
+            continue
 
         if not args.rerun:
             # if not forcing rerun, check if this experiment has run or failed before
@@ -183,15 +224,24 @@ def main():
 
         if args.dataset == 'apps':
             from program_env import APPSProgramEnv
-            env = APPSProgramEnv(
-                prob_path=prob_instance,
-                tokenizer=tokenizer,
-                model_name=args.load,
-                horizon=args.horizon,
-                public_test_cases=args.public_cases,
-                in_context_problems=in_context_problems,
-                overfit=args.overfit
-            )
+            try:
+                env = APPSProgramEnv(
+                    prob_path=prob_instance,
+                    tokenizer=tokenizer,
+                    model_name=args.load,
+                    horizon=args.horizon,
+                    public_test_cases=args.public_cases,
+                    in_context_problems=in_context_problems,
+                    num_in_context_examples=args.num_in_context_examples,
+                    overfit=args.overfit,
+                    min_generation_length=args.min_generation_length,
+                    strip_prompt_whitespace=args.strip_prompt_whitespace,
+                    extra_examples=extra_examples,
+                    programs_to_repair=None if prob_instance not in programs_to_repair else programs_to_repair[prob_instance]
+                )
+            except ValueError as e:
+                traceback.print_exc()
+                continue
         else:
             raise Exception(f"Unknown dataset {args.dataset}")
 
@@ -201,7 +251,7 @@ def main():
             model=model,
             value_model=value_model,
             k=args.width,
-            num_beams=args.num_beams,
+            num_beams=args.num_beams if args.ts_mode != 'sample' else args.num_samples,
             test_all_beams=args.test_all_beams,
             horizon=args.horizon,
             new_token_num=args.new_token_num,
@@ -212,7 +262,9 @@ def main():
             ts_mode=args.ts_mode,
             env=env,
             debug=args.debug,
-            in_context_examples=args.in_context_examples
+            in_context_examples=args.in_context_examples,
+            resample_incontext=args.resample_incontext,
+            parallel_context_window=args.parallel_context_window
         )
 
         start = time.time()
@@ -222,19 +274,23 @@ def main():
             states = [env.get_canonical_state()]
             info = {'num_samples': 0}
         else:
-            # run code generation
-            if args.alg == 'mcts':
-                from uct import uct_exp
-                states, info = uct_exp(args, env, dp, log_loc, start)
-            elif args.alg == 'mcts-multi':
-                from uct import uct_multistep_exp
-                states, info = uct_multistep_exp(args, env, dp, log_loc, start)
-            elif args.alg == 'bs':
-                states, info = bs_exp(args, env, dp)
-            elif args.alg == 'sample':
-                states, info = sample_exp(args, env, dp)
-            else:
-                raise Exception(f"Unknown alg {args.alg}.")
+            try:
+                # run code generation
+                if args.alg == 'mcts':
+                    from uct import uct_exp
+                    states, info = uct_exp(args, env, dp, log_loc, start)
+                elif args.alg == 'mcts-multi':
+                    from uct import uct_multistep_exp
+                    states, info = uct_multistep_exp(args, env, dp, log_loc, start)
+                elif args.alg == 'bs':
+                    states, info = bs_exp(args, env, dp)
+                elif args.alg == 'sample':
+                    states, info = sample_exp(args, env, dp)
+                else:
+                    raise Exception(f"Unknown alg {args.alg}.")
+            except ValueError as e:
+                traceback.print_exc()
+                continue
 
         if states is None or len(states) == 0:
             continue
@@ -252,6 +308,7 @@ def main():
 
         best_idx = np.argmax(train_rewards)
 
+        print('num programs', len(output_strs))
         print('final program:')
         print(output_strs[best_idx])
         print('train reward', train_rewards[best_idx])
@@ -260,8 +317,11 @@ def main():
         print('sample times', info['num_samples'])
 
         with open(code_loc, "w") as f:
-            json.dump({'codes': output_strs, 'rewards': test_rewards, 'train rewards': train_rewards,
-                       'time': time_elapsed, 'sample times': info['num_samples']}, f)
+            output = {'codes': output_strs, 'rewards': test_rewards, 'train rewards': train_rewards,
+                       'time': time_elapsed, 'sample times': info['num_samples']}
+            if hasattr(env, 'prompts'):
+                output['prompts'] = env.prompts
+            json.dump(output, f)
 
 
 if __name__ == '__main__':
@@ -270,7 +330,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--arch", default="gpt2", choices=transformers.GPT2_PRETRAINED_MODEL_ARCHIVE_LIST)
     #parser.add_argument("-l", "--load", default="../models/1.5B", type=str)
-    parser.add_argument("-l", "--load", default="codellama/CodeLlama-7b-Python-hf", type=str)
+    # parser.add_argument("-l", "--load", default="codellama/CodeLlama-7b-Python-hf", type=str)
+    parser.add_argument("-l", "--load", default="TheBloke/CodeLlama-7B-Python-AWQ", type=str)
     parser.add_argument("--load-value", default=None, type=str, help="An optional value function for evaluating partial programs.")
     parser.add_argument("-t","--test-loc", default="../data_split/test.json", type=str, help="This file specifies the locations of the test set of the code dataset.")
     parser.add_argument("--width", default=3, type=int, help="The maximum number of children for any node.")
@@ -291,6 +352,13 @@ if __name__ == '__main__':
 
     parser.add_argument("--ucb-constant", default=4., type=float)
     parser.add_argument("--ucb-base", default=10., type=float)
+
+    parser.add_argument("--resample-incontext", action="store_true")
+    parser.add_argument("--min-generation-length", type=int, default=500)
+    parser.add_argument("--strip-prompt-whitespace", action="store_true")
+    parser.add_argument("--extra_examples_csv_path")
+    parser.add_argument("--parallel-context-window", action="store_true")
+    parser.add_argument("--programs-to-repair")
 
     """
     mcts: Planning-Guided Transformer Decoding
@@ -318,6 +386,7 @@ if __name__ == '__main__':
     parser.add_argument("-e","--end", default=None, type=int)
     parser.add_argument("--indices", default=None, type=str)
     parser.add_argument("--in_context_examples", default=False, help="Whether to use in-context examples when prompting")
+    parser.add_argument("--num-in-context-examples", type=int, default=2)
 
     parser.add_argument("--save", type=str, default="./results", help="Directory to save generated code.")
     parser.add_argument("--prefix", type=str, default="", help="Prefix of generated code file.")

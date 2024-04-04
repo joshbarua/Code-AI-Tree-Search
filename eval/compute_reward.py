@@ -7,16 +7,16 @@ import numpy as np
 Running set in a separate process
 https://github.com/hendrycks/apps/blob/83d925041b1c43c32b56d444bb315f729f4ff633/eval/test_one_solution.py#L57
 """
-def _temp_run(prob_path, output_str, mode, public_test_cases, result, overfit=False):
-    result.append(test_util.run_test(prob_path=prob_path, test=output_str, mode=mode, public_test_cases=public_test_cases, overfit=overfit))
+def _temp_run(prob_path, output_str, mode, public_test_cases, result, overfit=False, trace_path=None):
+    result.append(test_util.run_test(prob_path=prob_path, test=output_str, mode=mode, public_test_cases=public_test_cases, overfit=overfit, trace_path=trace_path))
 
-def check_correctness(prob_path, output_str, mode, public_test_cases, overfit=False):
+def check_correctness(prob_path, output_str, mode, public_test_cases, overfit=False, trace_path=None):
     """Check correctness of code generation with a global timeout.
     The global timeout is to catch some extreme/rare cases not handled by the timeouts
     inside `run_test`"""
     manager = multiprocessing.Manager()
     result = manager.list()
-    p = multiprocessing.Process(target=_temp_run, args=(prob_path, output_str, mode, public_test_cases, result, overfit))
+    p = multiprocessing.Process(target=_temp_run, args=(prob_path, output_str, mode, public_test_cases, result, overfit, trace_path))
     p.start()
     p.join(timeout=10)
     if p.is_alive():
@@ -26,6 +26,7 @@ def check_correctness(prob_path, output_str, mode, public_test_cases, overfit=Fa
         # so we use 21=the average number of tests for a smaple in the test split instead
         avg_number_tests = 21
         result = [[-1] * avg_number_tests]
+    result[0] = [bool(res) if not isinstance(res, int) else res for res in result[0]]
     return result[0]
 
 
