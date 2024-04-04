@@ -1,0 +1,10 @@
+# python plot_log_likelihood.py --model "codellama/CodeLlama-7b-Python-hf" --data_loc "round1_introductory" --file_prefix "sanjay-" 
+# python plot_log_likelihood2.py --model finetuned_models/merged_codellama7b_round1_lr3e-4_formatted_redo_shuffle_eval_lorar128_codeonlyloss_checkpoint-95 --data_loc round1_introductory --batch-size 16 --output-dir metrics_round1_introductory &
+CUDA_VISIBLE_DEVICES=0 python plot_log_likelihood2.py --model codellama/CodeLlama-7b-Python-hf --data_loc round1_introductory --batch-size 16 --output-dir metrics_round1_introductory --num-parts 8 --part-num 0 &
+CUDA_VISIBLE_DEVICES=1 python plot_log_likelihood2.py --model codellama/CodeLlama-7b-Python-hf --data_loc round1_introductory --batch-size 16 --output-dir metrics_round1_introductory --num-parts 8 --part-num 1 &
+CUDA_VISIBLE_DEVICES=2 python plot_log_likelihood2.py --model codellama/CodeLlama-7b-Python-hf --data_loc round1_introductory --batch-size 16 --output-dir metrics_round1_introductory --num-parts 8 --part-num 2 &
+CUDA_VISIBLE_DEVICES=3 python plot_log_likelihood2.py --model codellama/CodeLlama-7b-Python-hf --data_loc round1_introductory --batch-size 16 --output-dir metrics_round1_introductory --num-parts 8 --part-num 3 &
+CUDA_VISIBLE_DEVICES=4 python plot_log_likelihood2.py --model codellama/CodeLlama-7b-Python-hf --data_loc round1_introductory --batch-size 16 --output-dir metrics_round1_introductory --num-parts 8 --part-num 4 &
+CUDA_VISIBLE_DEVICES=5 python plot_log_likelihood2.py --model codellama/CodeLlama-7b-Python-hf --data_loc round1_introductory --batch-size 16 --output-dir metrics_round1_introductory --num-parts 8 --part-num 5 &
+CUDA_VISIBLE_DEVICES=6 python plot_log_likelihood2.py --model codellama/CodeLlama-7b-Python-hf --data_loc round1_introductory --batch-size 16 --output-dir metrics_round1_introductory --num-parts 8 --part-num 6 &
+CUDA_VISIBLE_DEVICES=7 python plot_log_likelihood2.py --model codellama/CodeLlama-7b-Python-hf --data_loc round1_introductory --batch-size 16 --output-dir metrics_round1_introductory --num-parts 8 --part-num 7 &

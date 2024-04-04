@@ -1,0 +1,10 @@
+python save_test_case_results.py --input-dir round2_introductory_wrongonly_finetunedmultiple128_checkpoint95/ --problems-path ./train_introductory_round1wrong.json --prefix sanjay --start 0 --end 300 &
+python save_test_case_results.py --input-dir round2_introductory_wrongonly_finetunedmultiple128_checkpoint95/ --problems-path ./train_introductory_round1wrong.json --prefix sanjay --start 300 --end 600 &
+python save_test_case_results.py --input-dir round2_introductory_wrongonly_finetunedmultiple128_checkpoint95/ --problems-path ./train_introductory_round1wrong.json --prefix sanjay --start 600 --end 900 &
+python save_test_case_results.py --input-dir round2_introductory_wrongonly_finetunedmultiple128_checkpoint95/ --problems-path ./train_introductory_round1wrong.json --prefix sanjay --start 900 --end 1200 &
+python save_test_case_results.py --input-dir round2_introductory_wrongonly_finetunedmultiple128_checkpoint95/ --problems-path ./train_introductory_round1wrong.json --prefix sanjay --start 1200 --end 1500 &
+# python save_test_case_results.py --input-dir round2_introductory_wrongonly_finetunedmultiple128_checkpoint95/ --problems-path ../data_split/train_introductory.json --prefix sanjay --start 1500 --end 1800 &
+# python save_test_case_results.py --input-dir round2_introductory_wrongonly_finetunedmultiple128_checkpoint95/ --problems-path ../data_split/train_introductory.json --prefix sanjay --start 1800 --end 2100 &
+# python save_test_case_results.py --input-dir round2_introductory_wrongonly_finetunedmultiple128_checkpoint95/ --problems-path ../data_split/train_introductory.json --prefix sanjay --start 2100 --end 2400 &
+# python save_test_case_results.py --input-dir round2_introductory_wrongonly_finetunedmultiple128_checkpoint95/ --problems-path ../data_split/train_introductory.json --prefix sanjay --start 2400 --end 2700 &
+# python save_test_case_results.py --input-dir round2_introductory_wrongonly_finetunedmultiple128_checkpoint95/ --problems-path ../data_split/train_introductory.json --prefix sanjay --start 2700 --end 3000 &

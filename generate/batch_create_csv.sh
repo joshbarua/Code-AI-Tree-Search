@@ -1,0 +1,1 @@
+python create_csv_dataset.py --input-dir noawq_round1_introductory --output-dir round1_noawq_10attempts_csv/ --val-ids-path dev_ids.csv --problems-json ../data_split/train_introductory.json --revision-threshold 1 --correction-threshold 1 --summary-prefix sanjay --num-attempts 10 --num-parts 1 --part-num 0 # --edit-threshold 20 --revision-with-error --error-with-execution

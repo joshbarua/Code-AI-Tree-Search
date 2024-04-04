@@ -1,0 +1,2 @@
+python synthesis_exp.py -s 1007 -e 1500 --alg sample --num-samples 32 --prefix sanjay- --test-loc ../data_split/train_interview.json --horizon 3000 --save ./round1_interview --in_context_examples ../data_split/10prob_train_interview.json --max-sample-times 32 --rerun --public-cases 0 --overfit --debug --width 4 --ucb-constant 4 --test-all-beams --resample-incontext --num-in-context-examples 2 # --extra_examples_csv_path round1_interview_formatted_csv/train.csv
+
